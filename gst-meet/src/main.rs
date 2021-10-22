@@ -45,6 +45,8 @@ struct Opt {
   #[structopt(long)]
   select_endpoints: Option<String>,
   #[structopt(long)]
+  onstage_endpoints: Option<String>,
+  #[structopt(long)]
   last_n: Option<i32>,
   #[structopt(long)]
   recv_video_height: Option<i32>,
@@ -169,7 +171,9 @@ async fn main_inner() -> Result<()> {
         selected_endpoints: opt
           .select_endpoints
           .map(|endpoints| endpoints.split(',').map(ToOwned::to_owned).collect()),
-        on_stage_endpoints: None,
+        on_stage_endpoints: opt
+          .onstage_endpoints
+          .map(|endpoints| endpoints.split(',').map(ToOwned::to_owned).collect()),
         default_constraints: opt.recv_video_height.map(|height| Constraints {
           ideal_height: Some(height),
           max_height: None,
