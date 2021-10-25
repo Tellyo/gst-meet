@@ -175,8 +175,8 @@ async fn main_inner() -> Result<()> {
           .onstage_endpoints
           .map(|endpoints| endpoints.split(',').map(ToOwned::to_owned).collect()),
         default_constraints: opt.recv_video_height.map(|height| Constraints {
-          ideal_height: Some(height),
-          max_height: None,
+          max_height: Some(height),
+          ideal_height: None,
         }),
         constraints: None,
       })
