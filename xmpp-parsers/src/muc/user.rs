@@ -99,7 +99,7 @@ impl TryFrom<Element> for Actor {
         let nick = get_attr!(elem, "nick", Option);
 
         match (jid, nick) {
-            (Some(_), Some(_)) | (None, None) => Err(Error::ParseError(
+            (None, None) => Err(Error::ParseError(
                 "Either 'jid' or 'nick' attribute is required.",
             )),
             (Some(jid), _) => Ok(Actor::Jid(jid)),
