@@ -542,7 +542,7 @@ impl JingleSession {
     rtpbin.set_property_from_str("rtp-profile", "savpf");
     rtpbin.set_property("autoremove", true)?;
     rtpbin.set_property("do-lost", true)?;
-    rtpbin.set_property("latency", 1000u32)?;
+    rtpbin.set_property("latency", 500u32)?;
     pipeline.add(&rtpbin)?;
 
     let nicesrc = gstreamer::ElementFactory::make("nicesrc", None)?;

@@ -45,7 +45,9 @@ struct Opt {
   #[structopt(long)]
   select_endpoints: Option<String>,
   #[structopt(long)]
-  onstage_endpoints: Option<String>,
+  on_stage_endpoints: Option<String>,
+  #[structopt(long)]
+  single_endpoint: Option<String>,
   #[structopt(long)]
   last_n: Option<i32>,
   #[structopt(long)]
@@ -146,6 +148,7 @@ async fn main_inner() -> Result<()> {
     region,
     video_codec,
     recv_pipeline_participant_template,
+    single_endpoint,
     ..
   } = opt;
 
@@ -172,7 +175,7 @@ async fn main_inner() -> Result<()> {
           .select_endpoints
           .map(|endpoints| endpoints.split(',').map(ToOwned::to_owned).collect()),
         on_stage_endpoints: opt
-          .onstage_endpoints
+          .on_stage_endpoints
           .map(|endpoints| endpoints.split(',').map(ToOwned::to_owned).collect()),
         default_constraints: opt.recv_video_height.map(|height| Constraints {
           max_height: Some(height),
@@ -202,8 +205,7 @@ async fn main_inner() -> Result<()> {
       info!("Found audio element in pipeline, linking...");
       let audio_sink = conference.audio_sink_element().await?;
       audio.link(&audio_sink)?;
-    }
-    else {
+    } else {
       conference.set_muted(MediaType::Audio, true).await?;
     }
 
@@ -211,12 +213,10 @@ async fn main_inner() -> Result<()> {
       info!("Found video element in pipeline, linking...");
       let video_sink = conference.video_sink_element().await?;
       video.link(&video_sink)?;
-    }
-    else {
+    } else {
       conference.set_muted(MediaType::Video, true).await?;
     }
-  }
-  else {
+  } else {
     conference.set_muted(MediaType::Audio, true).await?;
     conference.set_muted(MediaType::Video, true).await?;
   }
@@ -224,61 +224,67 @@ async fn main_inner() -> Result<()> {
   conference
     .on_participant(move |conference, participant| {
       let recv_pipeline_participant_template = recv_pipeline_participant_template.clone();
+      let single_endpoint = single_endpoint.clone().unwrap_or_default();
       Box::pin(async move {
         info!("New participant: {:?}", participant);
+        let muc_jid = participant
+          .muc_jid
+          .resource
+          .split("/")
+          .last()
+          .unwrap_or_default();
 
-        if let Some(template) = recv_pipeline_participant_template {
-          let pipeline_description = template
-            .replace(
-              "{jid}",
-              &participant
-                .jid
-                .as_ref()
-                .map(|jid| jid.to_string())
-                .unwrap_or_default(),
-            )
-            .replace(
-              "{jid_user}",
-              participant
-                .jid
-                .as_ref()
-                .and_then(|jid| jid.node.as_deref())
-                .unwrap_or_default(),
-            )
-            .replace("{participant_id}", &participant.muc_jid.resource)
-            .replace("{nick}", &participant.nick.unwrap_or_default());
+        if muc_jid == single_endpoint {
+          if let Some(template) = recv_pipeline_participant_template {
+            let pipeline_description = template
+              .replace(
+                "{jid}",
+                &participant
+                  .jid
+                  .as_ref()
+                  .map(|jid| jid.to_string())
+                  .unwrap_or_default(),
+              )
+              .replace(
+                "{jid_user}",
+                participant
+                  .jid
+                  .as_ref()
+                  .and_then(|jid| jid.node.as_deref())
+                  .unwrap_or_default(),
+              )
+              .replace("{participant_id}", &participant.muc_jid.resource)
+              .replace("{nick}", &participant.nick.unwrap_or_default());
 
-          let bin = gstreamer::parse_bin_from_description(&pipeline_description, false)
-            .context("failed to parse recv pipeline participant template")?;
+            let bin = gstreamer::parse_bin_from_description(&pipeline_description, false)
+              .context("failed to parse recv pipeline participant template")?;
 
-          if let Some(audio_sink_element) = bin.by_name("audio") {
-            let sink_pad = audio_sink_element.static_pad("sink").context(
-              "audio sink element in recv pipeline participant template has no sink pad",
+            if let Some(audio_sink_element) = bin.by_name("audio") {
+              let sink_pad = audio_sink_element.static_pad("sink").context(
+                "audio sink element in recv pipeline participant template has no sink pad",
+              )?;
+              bin.add_pad(&GhostPad::with_target(Some("audio"), &sink_pad)?)?;
+            } else {
+              info!("No audio sink element found in recv pipeline participant template");
+            }
+
+            if let Some(video_sink_element) = bin.by_name("video") {
+              let sink_pad = video_sink_element.static_pad("sink").context(
+                "video sink element in recv pipeline participant template has no sink pad",
+              )?;
+              bin.add_pad(&GhostPad::with_target(Some("video"), &sink_pad)?)?;
+            } else {
+              info!("No video sink element found in recv pipeline participant template");
+            }
+
+            bin.set_property(
+              "name",
+              format!("participant_{}", participant.muc_jid.resource),
             )?;
-            bin.add_pad(&GhostPad::with_target(Some("audio"), &sink_pad)?)?;
+            conference.add_bin(&bin).await?;
+          } else {
+            info!("No template for handling new participant");
           }
-          else {
-            info!("No audio sink element found in recv pipeline participant template");
-          }
-
-          if let Some(video_sink_element) = bin.by_name("video") {
-            let sink_pad = video_sink_element.static_pad("sink").context(
-              "video sink element in recv pipeline participant template has no sink pad",
-            )?;
-            bin.add_pad(&GhostPad::with_target(Some("video"), &sink_pad)?)?;
-          }
-          else {
-            info!("No video sink element found in recv pipeline participant template");
-          }
-
-          bin.set_property(
-            "name",
-            format!("participant_{}", participant.muc_jid.resource),
-          )?;
-          conference.add_bin(&bin).await?;
-        }
-        else {
-          info!("No template for handling new participant");
         }
 
         Ok(())
@@ -316,7 +322,7 @@ async fn main_inner() -> Result<()> {
     info!("Exiting...");
 
     match timeout(Duration::from_secs(10), conference_.leave()).await {
-      Ok(Ok(_)) => {},
+      Ok(Ok(_)) => {}
       Ok(Err(e)) => warn!("Error leaving conference: {:?}", e),
       Err(_) => warn!("Timed out leaving conference"),
     }
