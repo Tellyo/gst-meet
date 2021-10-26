@@ -224,7 +224,7 @@ async fn main_inner() -> Result<()> {
   conference
     .on_participant(move |conference, participant| {
       let recv_pipeline_participant_template = recv_pipeline_participant_template.clone();
-      let single_endpoint = single_endpoint.clone().unwrap_or_default();
+      let single_endpoint = single_endpoint.clone();
       Box::pin(async move {
         info!("New participant: {:?}", participant);
         let muc_jid = participant
@@ -234,7 +234,7 @@ async fn main_inner() -> Result<()> {
           .last()
           .unwrap_or_default();
 
-        if muc_jid == single_endpoint {
+        if single_endpoint.is_none() || muc_jid == single_endpoint.unwrap() {
           if let Some(template) = recv_pipeline_participant_template {
             let pipeline_description = template
               .replace(
