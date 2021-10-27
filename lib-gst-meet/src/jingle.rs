@@ -116,11 +116,11 @@ impl Codec {
 }
 
 struct ParsedRtpDescription {
-    codecs: Vec<Codec>,
-    audio_hdrext_ssrc_audio_level: Option<u8>,
-    audio_hdrext_transport_cc: Option<u8>,
-    video_hdrext_abs_send_time: Option<u8>,
-    video_hdrext_transport_cc: Option<u8>,
+  codecs: Vec<Codec>,
+  audio_hdrext_ssrc_audio_level: Option<u8>,
+  audio_hdrext_transport_cc: Option<u8>,
+  video_hdrext_abs_send_time: Option<u8>,
+  video_hdrext_transport_cc: Option<u8>,
 }
 
 pub(crate) struct JingleSession {
@@ -174,7 +174,11 @@ impl JingleSession {
     Ok(self.pipeline_state_null_rx.await?)
   }
 
-  fn parse_rtp_description(description: &RtpDescription, remote_ssrc_map: &mut HashMap<u32, Source>) -> Result<Option<ParsedRtpDescription>> {
+  fn parse_rtp_description(
+    description: &RtpDescription,
+    remote_ssrc_map: &mut HashMap<u32, Source>,
+    endpoint_id: &String,
+  ) -> Result<Option<ParsedRtpDescription>> {
     let mut opus = None;
     let mut h264 = None;
     let mut vp8 = None;
@@ -206,13 +210,11 @@ impl JingleSession {
         // defined in the XEP and related RFC.
         if hdrext.uri == RTP_HDREXT_SSRC_AUDIO_LEVEL {
           audio_hdrext_ssrc_audio_level = Some(hdrext.id.parse::<u8>()?);
-        }
-        else if hdrext.uri == RTP_HDREXT_TRANSPORT_CC {
+        } else if hdrext.uri == RTP_HDREXT_TRANSPORT_CC {
           audio_hdrext_transport_cc = Some(hdrext.id.parse::<u8>()?);
         }
       }
-    }
-    else if description.media == "video" {
+    } else if description.media == "video" {
       for pt in description.payload_types.iter() {
         // We don’t support any static codec, so name MUST be set.
         if let Some(name) = &pt.name {
@@ -276,13 +278,11 @@ impl JingleSession {
         // defined in the XEP and related RFC.
         if hdrext.uri == RTP_HDREXT_ABS_SEND_TIME {
           video_hdrext_abs_send_time = Some(hdrext.id.parse::<u8>()?);
-        }
-        else if hdrext.uri == RTP_HDREXT_TRANSPORT_CC {
+        } else if hdrext.uri == RTP_HDREXT_TRANSPORT_CC {
           video_hdrext_transport_cc = Some(hdrext.id.parse::<u8>()?);
         }
       }
-    }
-    else {
+    } else {
       debug!("skipping media: {}", description.media);
       return Ok(None);
     }
@@ -298,41 +298,48 @@ impl JingleSession {
         .clone();
 
       debug!("adding ssrc to remote_ssrc_map: {:?}", ssrc);
-      remote_ssrc_map.insert(
-        ssrc.id.parse()?,
-        Source {
-          ssrc: ssrc.id.parse()?,
-          participant_id: if owner == "jvb" {
-            None
-          }
-          else {
-            Some(
-              owner
-                .split('/')
-                .nth(1)
-                .context("invalid ssrc-info owner")?
-                .to_owned(),
-            )
+
+      let id = owner.split('/').last().to_owned().unwrap_or_default();
+
+      debug!("adding ssrc to remote_ssrc_map: {:?} {:?}", ssrc, id);
+      if id == endpoint_id {
+        remote_ssrc_map.insert(
+          ssrc.id.parse()?,
+          Source {
+            ssrc: ssrc.id.parse()?,
+            participant_id: if owner == "jvb" {
+              None
+            } else {
+              Some(
+                owner
+                  .split('/')
+                  .nth(1)
+                  .context("invalid ssrc-info owner")?
+                  .to_owned(),
+              )
+            },
+            media_type: if description.media == "audio" {
+              MediaType::Audio
+            } else {
+              MediaType::Video
+            },
           },
-          media_type: if description.media == "audio" {
-            MediaType::Audio
-          }
-          else {
-            MediaType::Video
-          },
-        },
-      );
+        );
+      }
     }
     Ok(Some(ParsedRtpDescription {
-        codecs,
-        audio_hdrext_ssrc_audio_level,
-        audio_hdrext_transport_cc,
-        video_hdrext_abs_send_time,
-        video_hdrext_transport_cc,
+      codecs,
+      audio_hdrext_ssrc_audio_level,
+      audio_hdrext_transport_cc,
+      video_hdrext_abs_send_time,
+      video_hdrext_transport_cc,
     }))
   }
 
-  async fn setup_ice(conference: &JitsiConference, transport: &IceUdpTransport) -> Result<(nice::Agent, u32, u32)> {
+  async fn setup_ice(
+    conference: &JitsiConference,
+    transport: &IceUdpTransport,
+  ) -> Result<(nice::Agent, u32, u32)> {
     let ice_agent = nice::Agent::new(&conference.glib_main_context, nice::Compatibility::Rfc5245);
     ice_agent.set_ice_tcp(false);
     ice_agent.set_upnp(false);
@@ -352,8 +359,7 @@ impl JingleSession {
       ))
       .await?
       .next()
-    }
-    else {
+    } else {
       None
     };
     debug!("STUN address: {:?}", stun_addr);
@@ -474,12 +480,21 @@ impl JingleSession {
 
     for content in &jingle.contents {
       if let Some(Description::Rtp(description)) = &content.description {
-        if let Some(description) = JingleSession::parse_rtp_description(description, &mut remote_ssrc_map)? {
+        debug!("got conference config {}", conference.config.nick);
+        if let Some(description) = JingleSession::parse_rtp_description(
+          description,
+          &mut remote_ssrc_map,
+          &conference.config.endpoint_id,
+        )? {
           codecs.extend(description.codecs);
-          audio_hdrext_ssrc_audio_level = audio_hdrext_ssrc_audio_level.or(description.audio_hdrext_ssrc_audio_level);
-          audio_hdrext_transport_cc = audio_hdrext_transport_cc.or(description.audio_hdrext_transport_cc);
-          video_hdrext_abs_send_time = video_hdrext_abs_send_time.or(description.video_hdrext_abs_send_time);
-          video_hdrext_transport_cc = video_hdrext_transport_cc.or(description.video_hdrext_transport_cc);
+          audio_hdrext_ssrc_audio_level =
+            audio_hdrext_ssrc_audio_level.or(description.audio_hdrext_ssrc_audio_level);
+          audio_hdrext_transport_cc =
+            audio_hdrext_transport_cc.or(description.audio_hdrext_transport_cc);
+          video_hdrext_abs_send_time =
+            video_hdrext_abs_send_time.or(description.video_hdrext_abs_send_time);
+          video_hdrext_transport_cc =
+            video_hdrext_transport_cc.or(description.video_hdrext_transport_cc);
         }
       }
 
@@ -528,7 +543,8 @@ impl JingleSession {
     debug!("video SSRC: {}", video_ssrc);
     debug!("video RTX SSRC: {}", video_rtx_ssrc);
 
-    let (ice_agent, ice_stream_id, ice_component_id) = JingleSession::setup_ice(conference, ice_transport).await?;
+    let (ice_agent, ice_stream_id, ice_component_id) =
+      JingleSession::setup_ice(conference, ice_transport).await?;
 
     let (ice_local_ufrag, ice_local_pwd) = ice_agent
       .local_credentials(ice_stream_id)
@@ -592,8 +608,7 @@ impl JingleSession {
                 if let Some(hdrext) = audio_hdrext_transport_cc {
                   caps = caps.field(&format!("extmap-{}", hdrext), &RTP_HDREXT_TRANSPORT_CC);
                 }
-              }
-              else {
+              } else {
                 // A video codec, as the only audio codec we support is Opus.
                 caps = caps
                   .field("media", "video")
@@ -607,8 +622,7 @@ impl JingleSession {
                 }
               }
               return Ok::<_, anyhow::Error>(Some(caps.build()));
-            }
-            else if codec.is_rtx(pt) {
+            } else if codec.is_rtx(pt) {
               caps = caps
                 .field("media", "video")
                 .field("clock-rate", 90000)
@@ -625,12 +639,12 @@ impl JingleSession {
           Ok(Some(caps)) => {
             debug!("mapped pt to caps: {:?}", caps);
             Some(caps.to_value())
-          },
+          }
           Ok(None) => None,
           Err(e) => {
             error!("handling request-pt-map: {:?}", e);
             None
-          },
+          }
         }
       })?;
     }
@@ -675,7 +689,8 @@ impl JingleSession {
       None
     })?;
 
-    let pts: Vec<(String, u32)> = codecs.iter()
+    let pts: Vec<(String, u32)> = codecs
+      .iter()
       .filter(|codec| codec.is_video())
       .flat_map(|codec| {
         if let Some(rtx_pt) = codec.rtx_pt {
@@ -721,7 +736,7 @@ impl JingleSession {
           Err(e) => {
             warn!("request-aux-sender: {:?}", e);
             None
-          },
+          }
         }
       })?;
     }
@@ -757,7 +772,7 @@ impl JingleSession {
         Err(e) => {
           warn!("request-aux-receiver: {:?}", e);
           None
-        },
+        }
       }
     })?;
 
@@ -796,29 +811,29 @@ impl JingleSession {
 
             let source_element = match source.media_type {
               MediaType::Audio => {
-                let codec = codecs.iter()
+                let codec = codecs
+                  .iter()
                   .filter(|codec| codec.is_audio())
                   .find(|codec| codec.is(pt));
                 if let Some(codec) = codec {
                   gstreamer::ElementFactory::make(codec.make_depay_name(), None)?
-                }
-                else {
+                } else {
                   bail!("received audio with unsupported PT {}", pt);
                 }
-              },
+              }
               MediaType::Video => {
-                let codec = codecs.iter()
+                let codec = codecs
+                  .iter()
                   .filter(|codec| codec.is_video())
                   .find(|codec| codec.is(pt));
                 if let Some(codec) = codec {
                   let element = gstreamer::ElementFactory::make(codec.make_depay_name(), None)?;
                   element.set_property("request-keyframe", true)?;
                   element
-                }
-                else {
+                } else {
                   bail!("received video with unsupported PT {}", pt);
                 }
-              },
+              }
             };
 
             source_element.set_property("auto-header-extension", false)?;
@@ -832,10 +847,8 @@ impl JingleSession {
                 hdrext.set_id(ext_id);
                 if ext_uri == RTP_HDREXT_ABS_SEND_TIME {}
                 if ext_uri == RTP_HDREXT_SSRC_AUDIO_LEVEL {
-                }
-                else if ext_uri == RTP_HDREXT_TRANSPORT_CC {
-                }
-                else {
+                } else if ext_uri == RTP_HDREXT_TRANSPORT_CC {
+                } else {
                   bail!("unknown rtp hdrext: {}", ext_uri);
                 };
                 Ok::<_, anyhow::Error>(hdrext)
@@ -845,7 +858,7 @@ impl JingleSession {
                 Err(e) => {
                   warn!("request-extension: {:?}", e);
                   None
-                },
+                }
               }
             })?;
             pipeline
@@ -874,19 +887,16 @@ impl JingleSession {
                 if let Some(sink_pad) = participant_bin.static_pad(sink_pad_name) {
                   debug!("linking depayloader to participant bin");
                   src_pad.link(&sink_pad)?;
-                }
-                else {
+                } else {
                   warn!(
                     "no {} sink pad in {} participant bin",
                     sink_pad_name, participant_id
                   );
                 }
-              }
-              else {
+              } else {
                 debug!("no participant bin for {}", participant_id);
               }
-            }
-            else {
+            } else {
               debug!("not looking for participant bin, source is owned by JVB");
             }
 
@@ -905,8 +915,7 @@ impl JingleSession {
             );
 
             Ok::<_, anyhow::Error>(())
-          }
-          else {
+          } else {
             Ok(())
           }
         };
@@ -941,13 +950,10 @@ impl JingleSession {
             RTPHeaderExtension::create_from_uri(&ext_uri).context("failed to create hdrext")?;
           hdrext.set_id(ext_id);
           if ext_uri == RTP_HDREXT_ABS_SEND_TIME {
-          }
-          else if ext_uri == RTP_HDREXT_SSRC_AUDIO_LEVEL {
-          }
-          else if ext_uri == RTP_HDREXT_TRANSPORT_CC {
+          } else if ext_uri == RTP_HDREXT_SSRC_AUDIO_LEVEL {
+          } else if ext_uri == RTP_HDREXT_TRANSPORT_CC {
             // hdrext.set_property("n-streams", 2u32)?;
-          }
-          else {
+          } else {
             bail!("unknown rtp hdrext: {}", ext_uri);
           }
           Ok::<_, anyhow::Error>(hdrext)
@@ -957,11 +963,10 @@ impl JingleSession {
           Err(e) => {
             warn!("request-extension: {:?}", e);
             None
-          },
+          }
         }
       })?;
-    }
-    else {
+    } else {
       debug!("audio payloader: no rtp header extension support");
     }
     pipeline.add(&audio_sink_element)?;
@@ -973,13 +978,11 @@ impl JingleSession {
       element.set_property("pt", codec.pt as u32)?;
       if codec.name == CodecName::H264 {
         element.set_property_from_str("aggregate-mode", "zero-latency");
-      }
-      else {
+      } else {
         element.set_property_from_str("picture-id-mode", "15-bit");
       }
       element
-    }
-    else {
+    } else {
       bail!("unsupported video codec: {}", codec_name);
     };
     video_sink_element.set_property("ssrc", video_ssrc)?;
@@ -997,11 +1000,9 @@ impl JingleSession {
             RTPHeaderExtension::create_from_uri(&ext_uri).context("failed to create hdrext")?;
           hdrext.set_id(ext_id);
           if ext_uri == RTP_HDREXT_ABS_SEND_TIME {
-          }
-          else if ext_uri == RTP_HDREXT_TRANSPORT_CC {
+          } else if ext_uri == RTP_HDREXT_TRANSPORT_CC {
             // hdrext.set_property("n-streams", 2u32)?;
-          }
-          else {
+          } else {
             bail!("unknown rtp hdrext: {}", ext_uri);
           }
           Ok::<_, anyhow::Error>(hdrext)
@@ -1011,11 +1012,10 @@ impl JingleSession {
           Err(e) => {
             warn!("request-extension: {:?}", e);
             None
-          },
+          }
         }
       })?;
-    }
-    else {
+    } else {
       debug!("video payloader: no rtp header extension support");
     }
     pipeline.add(&video_sink_element)?;
@@ -1081,12 +1081,12 @@ impl JingleSession {
             if let Some(d) = e.debug() {
               error!("{}", d);
             }
-          },
+          }
           gstreamer::MessageView::Warning(e) => {
             if let Some(d) = e.debug() {
               warn!("{}", d);
             }
-          },
+          }
           gstreamer::MessageView::StateChanged(state)
             if state.current() == gstreamer::State::Null =>
           {
@@ -1094,7 +1094,7 @@ impl JingleSession {
             pipeline_state_null_tx.send(()).unwrap();
             break;
           }
-          _ => {},
+          _ => {}
         }
       }
     });
@@ -1125,20 +1125,13 @@ impl JingleSession {
       description.payload_types = if initiate_content.name.0 == "audio" {
         let codec = codecs.iter().find(|codec| codec.name == CodecName::Opus);
         if let Some(codec) = codec {
-          let mut pt = PayloadType::new(
-            codec.pt,
-            "opus".to_owned(),
-            48000,
-            2,
-          );
+          let mut pt = PayloadType::new(codec.pt, "opus".to_owned(), 48000, 2);
           pt.rtcp_fbs = codec.rtcp_fbs.clone();
           vec![pt]
-        }
-        else {
+        } else {
           bail!("no opus payload type in jingle session-initiate");
         }
-      }
-      else {
+      } else {
         let mut pts = vec![];
         let codec_name = conference.config.video_codec.as_str();
         let codec = codecs.iter().find(|codec| codec.is_codec(codec_name));
@@ -1154,8 +1147,7 @@ impl JingleSession {
             }];
             pts.push(rtx_pt);
           }
-        }
-        else {
+        } else {
           bail!("unsupported video codec: {}", codec_name);
         }
         pts
@@ -1169,15 +1161,13 @@ impl JingleSession {
 
       description.ssrc = Some(if initiate_content.name.0 == "audio" {
         audio_ssrc.to_string()
-      }
-      else {
+      } else {
         video_ssrc.to_string()
       });
 
       description.ssrcs = if initiate_content.name.0 == "audio" {
         vec![jingle_ssma::Source::new(audio_ssrc.to_string())]
-      }
-      else {
+      } else {
         vec![
           jingle_ssma::Source::new(video_ssrc.to_string()),
           jingle_ssma::Source::new(video_rtx_ssrc.to_string()),
@@ -1197,8 +1187,7 @@ impl JingleSession {
 
       description.ssrc_groups = if initiate_content.name.0 == "audio" {
         vec![]
-      }
-      else {
+      } else {
         vec![jingle_ssma::Group {
           semantics: "FID".to_owned(),
           sources: vec![
@@ -1221,8 +1210,7 @@ impl JingleSession {
             RTP_HDREXT_TRANSPORT_CC.to_owned(),
           ));
         }
-      }
-      else if initiate_content.name.0 == "video" {
+      } else if initiate_content.name.0 == "video" {
         // if let Some(hdrext) = video_hdrext_abs_send_time {
         //   description.hdrexts.push(RtpHdrext::new(hdrext.to_string(), RTP_HDREXT_ABS_SEND_TIME.to_owned()));
         // }
@@ -1306,15 +1294,13 @@ impl JingleSession {
             .owner
             .clone();
 
-          debug!("adding ssrc to remote_ssrc_map: {:?}", ssrc);
           self.remote_ssrc_map.insert(
             ssrc.id.parse()?,
             Source {
               ssrc: ssrc.id.parse()?,
               participant_id: if owner == "jvb" {
                 None
-              }
-              else {
+              } else {
                 Some(
                   owner
                     .split('/')
@@ -1325,8 +1311,7 @@ impl JingleSession {
               },
               media_type: if description.media == "audio" {
                 MediaType::Audio
-              }
-              else {
+              } else {
                 MediaType::Video
               },
             },

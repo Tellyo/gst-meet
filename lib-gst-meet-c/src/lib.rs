@@ -28,6 +28,7 @@ pub struct ConferenceConfig {
   pub nick: *const c_char,
   pub region: *const c_char,
   pub video_codec: *const c_char,
+  pub endpoint_id: *const c_char
 }
 
 #[repr(C)]
@@ -151,6 +152,7 @@ pub unsafe extern "C" fn gstmeet_connection_join_conference(
       .to_string_lossy()
       .to_string(),
     extra_muc_features: vec![],
+    endpoint_id: CStr::from_ptr((*config).endpoint_id).to_string_lossy().to_string()
   };
   (*context)
     .runtime

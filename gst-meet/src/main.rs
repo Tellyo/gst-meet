@@ -158,6 +158,7 @@ async fn main_inner() -> Result<()> {
     nick,
     region,
     video_codec,
+    endpoint_id: single_endpoint.to_owned().unwrap_or_default(),
     extra_muc_features: vec![],
   };
 
@@ -179,7 +180,7 @@ async fn main_inner() -> Result<()> {
           .map(|endpoints| endpoints.split(',').map(ToOwned::to_owned).collect()),
         default_constraints: opt.recv_video_height.map(|height| Constraints {
           max_height: Some(height),
-          ideal_height: None,
+          ideal_height: Some(height),
         }),
         constraints: None,
       })

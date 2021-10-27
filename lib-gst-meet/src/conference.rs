@@ -91,6 +91,7 @@ pub struct JitsiConferenceConfig {
   pub region: Option<String>,
   pub video_codec: String,
   pub extra_muc_features: Vec<String>,
+  pub endpoint_id: String
 }
 
 #[derive(Clone)]
@@ -157,7 +158,7 @@ impl JitsiConference {
         // Disable voice processing
         // TODO put this in config
         "stereo".to_string() => "true".to_string(),
-        "startBitrate".to_string() => "800".to_string(),
+        "startBitrate".to_string() => "2000".to_string(),
       },
     };
 
