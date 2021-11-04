@@ -206,7 +206,7 @@ async fn main_inner() -> Result<()> {
       let audio_sink = conference.audio_sink_element().await?;
       audio.link(&audio_sink)?;
     } else {
-      conference.set_muted(MediaType::Audio, true).await?;
+      //conference.set_muted(MediaType::Audio, true).await?;
     }
 
     if let Some(video) = bin.by_name("video") {
@@ -214,11 +214,11 @@ async fn main_inner() -> Result<()> {
       let video_sink = conference.video_sink_element().await?;
       video.link(&video_sink)?;
     } else {
-      conference.set_muted(MediaType::Video, true).await?;
+      //conference.set_muted(MediaType::Video, true).await?;
     }
   } else {
-    conference.set_muted(MediaType::Audio, true).await?;
-    conference.set_muted(MediaType::Video, true).await?;
+    //conference.set_muted(MediaType::Audio, true).await?;
+    //conference.set_muted(MediaType::Video, true).await?;
   }
 
   conference
