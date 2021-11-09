@@ -542,7 +542,7 @@ impl JingleSession {
     rtpbin.set_property_from_str("rtp-profile", "savpf");
     rtpbin.set_property("autoremove", true)?;
     rtpbin.set_property("do-lost", true)?;
-    rtpbin.set_property("latency", 500u32)?;
+    rtpbin.set_property("latency", 1000u32)?;
     pipeline.add(&rtpbin)?;
 
     let nicesrc = gstreamer::ElementFactory::make("nicesrc", None)?;
@@ -666,6 +666,7 @@ impl JingleSession {
         if source.media_type == MediaType::Video && source.participant_id.is_some() {
           debug!("enabling RTX for ssrc {}", ssrc);
           rtpjitterbuffer.set_property("do-retransmission", true)?;
+          rtpjitterbuffer.set_property("rtx-deadline", 1000u32)?;
         }
         Ok::<_, anyhow::Error>(())
       };
