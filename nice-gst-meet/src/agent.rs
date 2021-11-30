@@ -316,6 +316,7 @@ impl Agent {
   #[cfg_attr(feature = "dox", doc(cfg(feature = "v0_1_4")))]
   #[doc(alias = "nice_agent_parse_remote_sdp")]
   pub fn parse_remote_sdp(&self, sdp: &str) -> i32 {
+    print!("remote sdp: {}", sdp);
     unsafe { ffi::nice_agent_parse_remote_sdp(self.to_glib_none().0, sdp.to_glib_none().0) }
   }
 

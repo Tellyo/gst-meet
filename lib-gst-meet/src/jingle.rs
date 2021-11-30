@@ -546,8 +546,8 @@ impl JingleSession {
 
     let rtpbin = gstreamer::ElementFactory::make("rtpbin", Some("rtpbin"))?;
     rtpbin.set_property_from_str("rtp-profile", "savpf");
-    rtpbin.set_property("autoremove", true)?;
     rtpbin.set_property("do-lost", true)?;
+    //rtpbin.set_property("drop-on-latency", true)?;
     rtpbin.set_property("latency", 1000u32)?;
     pipeline.add(&rtpbin)?;
 
@@ -669,7 +669,12 @@ impl JingleSession {
         debug!("jitterbuffer is for remote source: {:?}", source);
         if source.media_type == MediaType::Video && source.participant_id.is_some() {
           debug!("enabling RTX for ssrc {}", ssrc);
-          rtpjitterbuffer.set_property("do-retransmission", true)?;
+          //rtpjitterbuffer.set_property("do-retransmission", true)?;
+          //rtpjitterbuffer.set_property("rtx-deadline", 1000)?;
+          //rtpjitterbuffer.set_property("max-dropout-time", 2000u32)?;
+          //rtpjitterbuffer.set_property("max-misorder-time", 2000u32)?;
+          //rtpjitterbuffer.set_property("drop-on-latency", true)?;
+          //rtpjitterbuffer.set_property("do-lost", true)?;
         }
         Ok::<_, anyhow::Error>(())
       };
@@ -818,7 +823,10 @@ impl JingleSession {
                   .find(|codec| codec.is(pt));
                 if let Some(codec) = codec {
                   let element = gstreamer::ElementFactory::make(codec.make_depay_name(), None)?;
-                  element.set_property("request-keyframe", true)?;
+                  //element.set_property("request-keyframe", true)?;
+                  element.set_property("max-reorder", 100)?;
+                  //element.set_property("auto-header-extension", true)?;
+                  element.set_property("wait-for-keyframe", true)?;
                   element
                 } else {
                   bail!("received video with unsupported PT {}", pt);
