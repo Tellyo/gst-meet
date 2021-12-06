@@ -669,7 +669,7 @@ impl JingleSession {
         debug!("jitterbuffer is for remote source: {:?}", source);
         if source.media_type == MediaType::Video && source.participant_id.is_some() {
           debug!("enabling RTX for ssrc {}", ssrc);
-          //rtpjitterbuffer.set_property("do-retransmission", true)?;
+          rtpjitterbuffer.set_property("do-retransmission", true)?;
           //rtpjitterbuffer.set_property("rtx-deadline", 400)?;
           //rtpjitterbuffer.set_property("max-dropout-time", 200u32)?;
           //rtpjitterbuffer.set_property("max-misorder-time", 200u32)?;
