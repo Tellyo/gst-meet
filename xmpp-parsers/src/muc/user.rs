@@ -57,7 +57,7 @@ Status, "status", MUC_USER, "code", {
     NewNick => 303,
 
     /// Inform user that he or she has been kicked from the room
-    Kicked => 307,
+    Kicked => 333,
 
     /// Inform user that he or she is being removed from the room
     /// because of an affiliation change
@@ -370,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    /*fn test_status_invalid_code() {
+    fn test_status_invalid_code() {
         let elem: Element = "
             <status xmlns='http://jabber.org/protocol/muc#user' code='666'/>
         "
@@ -381,8 +381,8 @@ mod tests {
             Error::ParseError(string) => string,
             _ => panic!(),
         };
-        //assert_eq!(message, "Invalid status code value.");
-    }*/
+        assert_eq!(message, "Invalid status code value.");
+    }
 
     #[test]
     fn test_status_invalid_code2() {
