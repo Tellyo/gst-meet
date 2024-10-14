@@ -887,6 +887,7 @@ impl StanzaFilter for JitsiConference {
                             };
                             if let Err(e) = colibri_channel.send(stats).await {
                               warn!("failed to send stats: {:?}", e);
+                              std::process::exit(0);
                             }
                           }
                           else {
