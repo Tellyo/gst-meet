@@ -145,9 +145,11 @@ impl ColibriChannel {
             }
           }
           error!("colibri recv loop: {:?}", e);
+          std::process::exit(0);
         },
         res = send_task => if let Ok(Err(e)) = res {
           error!("colibri send loop: {:?}", e);
+          std::process::exit(0);
         },
       };
     });
