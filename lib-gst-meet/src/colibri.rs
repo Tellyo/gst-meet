@@ -105,6 +105,7 @@ impl ColibriChannel {
             Message::Close(_) => {
               debug!("received close frame on colibri websocket");
               // TODO reconnect
+              std::process::exit(0);
               break;
             },
             Message::Frame(_) | Message::Ping(_) | Message::Pong(_) => {}, // handled automatically by tungstenite
