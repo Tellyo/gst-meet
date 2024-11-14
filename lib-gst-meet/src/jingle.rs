@@ -703,7 +703,7 @@ impl JingleSession {
         if source.media_type == MediaType::Video && source.participant_id.is_some() {
           debug!("enabling RTX for ssrc {}", ssrc);
           rtpjitterbuffer.set_property("do-retransmission", true);
-          rtpjitterbuffer.set_property("drop-on-latency", true);
+          rtpjitterbuffer.set_property("drop-on-latency", false);
           rtpjitterbuffer.set_property("latency", buffer_size);
         }
         Ok::<_, anyhow::Error>(())
